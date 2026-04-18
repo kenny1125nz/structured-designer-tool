@@ -1,0 +1,335 @@
+{
+  "id": "c7d8e9f0-1234-4abc-8def-000000000001",
+  "label": "Graph Designer Tool",
+  "type": "architecture",
+  "schemaVersion": "1.0.0",
+  "layoutConfig": {
+    "algorithm": "force",
+    "params": {
+      "linkDistance": 220,
+      "charge": -900
+    }
+  },
+  "metadata": {
+    "description": "High-level component architecture of the Graph Designer Tool as defined in requirement.md and tech-design.md."
+  },
+  "createdAt": "2026-04-17T00:00:00Z",
+  "updatedAt": "2026-04-17T00:00:00Z",
+  "children": [
+    {
+      "id": "c7d8e9f0-1234-4abc-8def-000000000002",
+      "label": "Model Layer",
+      "type": "InternalComponent",
+      "metadata": {
+        "componentKind": "service",
+        "description": "Owns the canonical representation of all graph data and its storage lifecycle (tech-design §3.1).",
+        "exposes": [
+          {
+            "capability": "GraphRead",
+            "protocol": "HTTP"
+          },
+          {
+            "capability": "GraphWrite",
+            "protocol": "HTTP"
+          }
+        ]
+      },
+      "children": [
+        {
+          "id": "c7d8e9f0-1234-4abc-8def-000000000003",
+          "label": "Canonical Data Model",
+          "type": "InternalComponent",
+          "metadata": {
+            "componentKind": "service",
+            "description": "Node / Reference / NodeType / ReferenceType interfaces. UUID v4 identity scheme. Single-root JSON document format with schemaVersion."
+          }
+        },
+        {
+          "id": "c7d8e9f0-1234-4abc-8def-000000000004",
+          "label": "IndexedDB Store",
+          "type": "InternalComponent",
+          "metadata": {
+            "componentKind": "storage",
+            "description": "Write-through persistence using the native IndexedDB API. Single 'graphs' object store keyed by root Node id. No localStorage fallback."
+          },
+          "references": [
+            {
+              "id": "c7d8e9f0-1234-4abc-8def-000000000101",
+              "type": "calls",
+              "target": "c7d8e9f0-1234-4abc-8def-000000000005",
+              "metadata": {
+                "description": "Read and write root Node documents to the browser's native storage."
+              }
+            }
+          ],
+          "children": [
+            {
+              "id": "c7d8e9f0-1234-4abc-8def-000000000005",
+              "label": "Browser IndexedDB",
+              "type": "ExternalComponent",
+              "metadata": {
+                "componentKind": "storage",
+                "description": "Browser-native IndexedDB API. Single source of truth for persisted graph documents; no remote dependency."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "c7d8e9f0-1234-4abc-8def-000000000006",
+      "label": "View Layer",
+      "type": "InternalComponent",
+      "metadata": {
+        "componentKind": "gui",
+        "description": "Everything the user sees and interacts with visually — canvas, panels, dialogs, forms (tech-design §3.2)."
+      },
+      "references": [
+        {
+          "id": "c7d8e9f0-1234-4abc-8def-000000000102",
+          "type": "calls",
+          "target": "c7d8e9f0-1234-4abc-8def-000000000002",
+          "metadata": {
+            "description": "Reads graph documents from the Model Layer to render the canvas and populate panels."
+          }
+        },
+        {
+          "id": "c7d8e9f0-1234-4abc-8def-000000000103",
+          "type": "calls",
+          "target": "c7d8e9f0-1234-4abc-8def-00000000000b",
+          "metadata": {
+            "description": "Triggers layout runs, source analysis, AI-assisted edits, and import/export via the Controller Layer."
+          }
+        }
+      ],
+      "children": [
+        {
+          "id": "c7d8e9f0-1234-4abc-8def-000000000007",
+          "label": "Graph Renderer",
+          "type": "InternalComponent",
+          "metadata": {
+            "componentKind": "gui",
+            "description": "React Flow (@xyflow/react) canvas. Accessed exclusively through the GraphAdapter contract — application logic never imports React Flow directly."
+          }
+        },
+        {
+          "id": "c7d8e9f0-1234-4abc-8def-000000000008",
+          "label": "Per-Type Adapters",
+          "type": "InternalComponent",
+          "metadata": {
+            "componentKind": "gui",
+            "description": "One GraphAdapter implementation per root node type (document, architecture, code). Share a createGraphCanvas() factory from react-flow-base. Selected from registry by active graph type."
+          },
+          "references": [
+            {
+              "id": "c7d8e9f0-1234-4abc-8def-000000000104",
+              "type": "calls",
+              "target": "c7d8e9f0-1234-4abc-8def-000000000014",
+              "metadata": {
+                "description": "Loads adapter component from ADAPTER_REGISTRY keyed by the active graph type id."
+              }
+            }
+          ]
+        },
+        {
+          "id": "c7d8e9f0-1234-4abc-8def-000000000009",
+          "label": "UI Shell",
+          "type": "InternalComponent",
+          "metadata": {
+            "componentKind": "gui",
+            "description": "Panels, dialogs, menus, and forms built with shadcn/ui (Radix UI + Tailwind CSS). Raw JSON metadata editing via CodeMirror 6."
+          }
+        },
+        {
+          "id": "c7d8e9f0-1234-4abc-8def-00000000000a",
+          "label": "HTTP File Server",
+          "type": "ExternalComponent",
+          "metadata": {
+            "componentKind": "gateway",
+            "description": "Any standard HTTP file server hosting the static bundle (HTML + JS + CSS + assets). No server-side process or configuration required."
+          }
+        }
+      ]
+    },
+    {
+      "id": "c7d8e9f0-1234-4abc-8def-00000000000b",
+      "label": "Controller Layer",
+      "type": "InternalComponent",
+      "metadata": {
+        "componentKind": "service",
+        "description": "Translates user intent into model mutations: layout computation, AI-assisted editing, source analysis, import/export (tech-design §3.3)."
+      },
+      "references": [
+        {
+          "id": "c7d8e9f0-1234-4abc-8def-000000000105",
+          "type": "calls",
+          "target": "c7d8e9f0-1234-4abc-8def-000000000002",
+          "metadata": {
+            "description": "Reads and writes graph documents; all mutations are written through to IndexedDB."
+          }
+        },
+        {
+          "id": "c7d8e9f0-1234-4abc-8def-000000000106",
+          "type": "calls",
+          "target": "c7d8e9f0-1234-4abc-8def-000000000014",
+          "metadata": {
+            "description": "Invokes per-type source analyzers via ANALYZER_REGISTRY."
+          }
+        }
+      ],
+      "children": [
+        {
+          "id": "c7d8e9f0-1234-4abc-8def-00000000000c",
+          "label": "Layout Engine",
+          "type": "InternalComponent",
+          "metadata": {
+            "componentKind": "worker",
+            "description": "Pure functions (root: Node, params) => Map<id, {x,y}>. Strategies: hierarchical (Dagre), force-directed (d3-force), radial (in-house), grid (in-house). No side effects on the model.",
+            "exposes": [
+              {
+                "capability": "ComputeLayout",
+                "protocol": "HTTP"
+              }
+            ]
+          }
+        },
+        {
+          "id": "c7d8e9f0-1234-4abc-8def-00000000000d",
+          "label": "AI Editing Client",
+          "type": "InternalComponent",
+          "metadata": {
+            "componentKind": "service",
+            "description": "Minimal OpenAI-compatible HTTP client. Generates patches for node/reference label, type, and metadata only — no structural mutations. Feature-flagged (ai.enabled, off by default)."
+          },
+          "references": [
+            {
+              "id": "c7d8e9f0-1234-4abc-8def-000000000107",
+              "type": "calls",
+              "target": "c7d8e9f0-1234-4abc-8def-00000000000e",
+              "label": "generatePatch",
+              "metadata": {
+                "description": "Single generatePatchForNodeOrReference call. Only executed when ai.enabled flag is on and provider is reachable."
+              }
+            }
+          ],
+          "children": [
+            {
+              "id": "c7d8e9f0-1234-4abc-8def-00000000000e",
+              "label": "AI Provider",
+              "type": "ExternalComponent",
+              "metadata": {
+                "componentKind": "service",
+                "description": "OpenAI-compatible API endpoint. Optional — all authoring workflows are fully functional without it. Configured via a single endpoint setting."
+              }
+            }
+          ]
+        },
+        {
+          "id": "c7d8e9f0-1234-4abc-8def-00000000000f",
+          "label": "Source Analyzer",
+          "type": "InternalComponent",
+          "metadata": {
+            "componentKind": "service",
+            "description": "Coordinates per-type analyzers. Each analyzer is a pure async function: (source: string) => root Node. The draft is returned to the user for review; it is persisted only on confirmation."
+          },
+          "children": [
+            {
+              "id": "c7d8e9f0-1234-4abc-8def-000000000010",
+              "label": "Document Analyzer",
+              "type": "InternalComponent",
+              "metadata": {
+                "componentKind": "worker",
+                "description": "Extracts Markdown heading structure into a section-node hierarchy using a no-dependency regex parser. Falls back to AI Editing Client for unstructured plain text when ai.enabled is on."
+              },
+              "references": [
+                {
+                  "id": "c7d8e9f0-1234-4abc-8def-000000000108",
+                  "type": "calls",
+                  "target": "c7d8e9f0-1234-4abc-8def-00000000000d",
+                  "label": "fallback (unstructured text)",
+                  "metadata": {
+                    "description": "AI-assisted section detection for plain-text input without heading structure. Only when ai.enabled."
+                  }
+                }
+              ]
+            },
+            {
+              "id": "c7d8e9f0-1234-4abc-8def-000000000011",
+              "label": "Code Analyzer",
+              "type": "InternalComponent",
+              "metadata": {
+                "componentKind": "worker",
+                "description": "TypeScript / JavaScript: TypeScript Compiler API walks the AST in memory (no emit). Python / Java / C#: pattern-based extraction at reduced fidelity. No AI involvement."
+              }
+            },
+            {
+              "id": "c7d8e9f0-1234-4abc-8def-000000000012",
+              "label": "Architecture Analyzer",
+              "type": "InternalComponent",
+              "metadata": {
+                "componentKind": "worker",
+                "description": "Straight passthrough. Validates an uploaded JSON file against the graph document format and returns it directly as the draft root Node. No parsing, inference, or AI required (MVP simplification)."
+              }
+            }
+          ]
+        },
+        {
+          "id": "c7d8e9f0-1234-4abc-8def-000000000013",
+          "label": "Import / Export",
+          "type": "InternalComponent",
+          "metadata": {
+            "componentKind": "service",
+            "description": "Lossless serialisation and deserialisation of root Node documents to and from the canonical open JSON format. No information is lost across a round-trip."
+          }
+        }
+      ]
+    },
+    {
+      "id": "c7d8e9f0-1234-4abc-8def-000000000014",
+      "label": "Graph-Type Modules",
+      "type": "InternalComponent",
+      "metadata": {
+        "componentKind": "service",
+        "description": "Isolated modules under src/graph-types/{type}/. Each module owns its NodeType, metadata schemas, adapter, and analyzer. Assembled by a central registry (tech-design §3.4)."
+      },
+      "children": [
+        {
+          "id": "c7d8e9f0-1234-4abc-8def-000000000015",
+          "label": "Registry",
+          "type": "InternalComponent",
+          "metadata": {
+            "componentKind": "service",
+            "description": "NODE_TYPES + ADAPTER_REGISTRY + ANALYZER_REGISTRY. The only file outside a graph-type module that imports from all three modules. Exports the full catalog to the rest of the application."
+          }
+        },
+        {
+          "id": "c7d8e9f0-1234-4abc-8def-000000000016",
+          "label": "Document Module",
+          "type": "InternalComponent",
+          "metadata": {
+            "componentKind": "service",
+            "description": "node-type (root, section), metadata-schema, React Flow adapter, and heading-based Markdown analyzer for document graphs."
+          }
+        },
+        {
+          "id": "c7d8e9f0-1234-4abc-8def-000000000017",
+          "label": "Architecture Module",
+          "type": "InternalComponent",
+          "metadata": {
+            "componentKind": "service",
+            "description": "node-type (InternalComponent, ExternalComponent), metadata-schema (componentKind, exposes), React Flow adapter, and JSON-passthrough analyzer for architecture graphs."
+          }
+        },
+        {
+          "id": "c7d8e9f0-1234-4abc-8def-000000000018",
+          "label": "Code Module",
+          "type": "InternalComponent",
+          "metadata": {
+            "componentKind": "service",
+            "description": "node-type (package, class, interface, member), metadata-schema, React Flow adapter, and TypeScript Compiler API-based analyzer for code graphs."
+          }
+        }
+      ]
+    }
+  ]
+}

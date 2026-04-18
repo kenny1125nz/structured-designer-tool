@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(node *)",
+      "Bash(timeout 10 npx vite build --mode development)",
+      "Bash(npm run *)",
+      "Bash(npx eslint *)",
+      "Bash(timeout 15 npx vite build)"
+    ]
+  }
+}
