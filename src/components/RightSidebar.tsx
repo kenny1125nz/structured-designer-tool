@@ -1,26 +1,20 @@
 import { useState, useRef, useEffect } from "react";
 import type { Node, Reference } from "@/model/types";
 import type { ChatMessage } from "@/controller/ai/graph-chat";
+import type { AppDispatch } from "@/app/events";
 import { findNodeById } from "@/model/utils";
 
 // ---------------------------------------------------------------------------
-// Source-context detection
+// RightSidebar props
 // ---------------------------------------------------------------------------
 
 interface RightSidebarProps {
   sidebarWidth: number;
   isResizing: boolean;
-  onResizeStart: () => void;
   activeGraph?: Node | null;
-  /** The currently selected node on the canvas (null = none / root level). */
   selectedNode?: Node | null;
-  /** The currently selected reference/edge on the canvas (null = none). */
   selectedReference?: { ref: Reference; source: Node } | null;
-  onGraphUpdate?: (graph: Node) => Promise<void>;
-  /** Called when the user edits a node's label or metadata from the Properties panel. */
-  onNodeUpdate?: (nodeId: string, changes: { label?: string; metadata?: Record<string, unknown> }) => Promise<void>;
-  /** Called when the user deletes a node from the Properties panel. */
-  onNodeDelete?: (nodeId: string) => Promise<void>;
+  onEvent: AppDispatch;
 }
 
 // ---------------------------------------------------------------------------
@@ -39,11 +33,6 @@ function countRefs(node: Node): number {
   return n;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers for structured metadata display
-// ---------------------------------------------------------------------------
-
-/** Returns a summary of direct children grouped by type, e.g. "3 entities, 1 enum, 2 files". */
 function childrenSummary(node: Node): string | null {
   if (!node.children?.length) return null;
   const counts = new Map<string, number>();
@@ -55,12 +44,11 @@ function childrenSummary(node: Node): string | null {
     .join(", ");
 }
 
-/** Groups references by type, preserving full Reference objects. */
 function groupedRefs(
   node: Node,
-): Array<{ type: string; refs: import("@/model/types").Reference[] }> {
+): Array<{ type: string; refs: Reference[] }> {
   if (!node.references?.length) return [];
-  const map = new Map<string, import("@/model/types").Reference[]>();
+  const map = new Map<string, Reference[]>();
   for (const r of node.references) {
     const list = map.get(r.type) ?? [];
     list.push(r);
@@ -156,11 +144,7 @@ function NodeJson({ node }: { node: Node }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const payload = JSON.stringify(
-    { ...node, children: undefined },
-    null,
-    2,
-  );
+  const payload = JSON.stringify({ ...node, children: undefined }, null, 2);
 
   function handleCopy() {
     navigator.clipboard.writeText(payload).then(() => {
@@ -218,7 +202,6 @@ function NodeEditor({
   const [metaText, setMetaText] = useState(() => {
     const editableMeta: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(node.metadata ?? {})) {
-      // Skip internal keys used by the versioning system.
       if (k === "versions" || k === "activeVersionId") continue;
       editableMeta[k] = v;
     }
@@ -229,7 +212,6 @@ function NodeEditor({
   const [metaError, setMetaError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Reset form when selected node changes.
   useEffect(() => {
     setLabel(node.label);
     const editableMeta: Record<string, unknown> = {};
@@ -325,10 +307,8 @@ function NodeEditor({
         <div className="text-sm capitalize text-muted-foreground">{node.type}</div>
       </div>
 
-      {/* Code-specific structured details */}
       {isCodeGraph && <CodeNodeDetails node={node} />}
 
-      {/* Children summary */}
       {childSummary && (
         <div>
           <label className="text-xs text-muted-foreground block mb-1">Children</label>
@@ -336,7 +316,6 @@ function NodeEditor({
         </div>
       )}
 
-      {/* Outgoing references grouped by type */}
       {refGroups.length > 0 && (
         <div>
           <label className="text-xs text-muted-foreground block mb-1">
@@ -392,7 +371,6 @@ function NodeEditor({
         <div className="text-xs font-mono text-muted-foreground truncate">{node.id}</div>
       </div>
 
-      {/* Raw metadata — editable for non-read-only, collapsed display for code graphs */}
       {!isCodeGraph && (
         <div>
           <label className="text-xs text-muted-foreground block mb-1">
@@ -422,7 +400,6 @@ function NodeEditor({
         </div>
       )}
 
-      {/* JSON payload (node without children) */}
       <NodeJson node={node} />
 
       {!readOnly && (
@@ -452,9 +429,7 @@ function ReferenceDetails({
   graph: Node;
 }) {
   const targetNode = findNodeById(graph, ref.target);
-  const metaEntries = Object.entries(ref.metadata ?? {}).filter(
-    ([k]) => k !== "specifier" || true,
-  );
+  const metaEntries = Object.entries(ref.metadata ?? {});
 
   return (
     <div className="space-y-3">
@@ -518,36 +493,28 @@ function PropertiesTab({
   graph,
   selectedNode,
   selectedReference,
-  onGraphUpdate,
-  onNodeUpdate,
-  onNodeDelete,
+  onEvent,
 }: {
   graph: Node | null | undefined;
   selectedNode?: Node | null;
   selectedReference?: { ref: Reference; source: Node } | null;
-  onGraphUpdate?: (graph: Node) => Promise<void>;
-  onNodeUpdate?: (nodeId: string, changes: { label?: string; metadata?: Record<string, unknown> }) => Promise<void>;
-  onNodeDelete?: (nodeId: string) => Promise<void>;
+  onEvent: AppDispatch;
 }) {
   if (!graph) {
     return <p className="text-xs text-muted-foreground">No graph selected.</p>;
   }
 
-
-
-  // If a canvas node is selected, show its editor instead of the graph summary.
   if (selectedNode && selectedNode.id !== graph.id) {
     return (
       <NodeEditor
         node={selectedNode}
         graph={graph}
-        onUpdate={onNodeUpdate}
-        onDelete={onNodeDelete}
+        onUpdate={(nodeId, changes) => onEvent({ type: "node:update", nodeId, changes })}
+        onDelete={(nodeId) => onEvent({ type: "node:delete", nodeId })}
       />
     );
   }
 
-  // If an edge is selected (and no node), show reference details.
   if (selectedReference && (!selectedNode || selectedNode.id === graph.id)) {
     return (
       <ReferenceDetails
@@ -558,7 +525,7 @@ function PropertiesTab({
     );
   }
 
-  const nodeCount = countNodes(graph) - 1; // exclude root
+  const nodeCount = countNodes(graph) - 1;
   const refCount = countRefs(graph);
 
   return (
@@ -571,7 +538,6 @@ function PropertiesTab({
         <label className="text-xs text-muted-foreground block mb-1">Type</label>
         <div className="text-sm capitalize">{graph.type}</div>
       </div>
-
       <div>
         <label className="text-xs text-muted-foreground block mb-1">Nodes</label>
         <div className="text-sm">{nodeCount}</div>
@@ -676,8 +642,6 @@ function ChatTab({
   const [includeSource, setIncludeSource] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const sourceLabel = graph.label;
-
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -697,17 +661,11 @@ function ChatTab({
       const { chatAdjustGraph } = await import("@/controller/ai/graph-chat");
       const updated = await chatAdjustGraph(nextMessages, graph, { includeSource });
       await onGraphUpdate?.(updated);
-      setMessages([
-        ...nextMessages,
-        { role: "assistant", content: "Done — graph updated." },
-      ]);
+      setMessages([...nextMessages, { role: "assistant", content: "Done — graph updated." }]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       setError(msg);
-      setMessages([
-        ...nextMessages,
-        { role: "assistant", content: `Error: ${msg}` },
-      ]);
+      setMessages([...nextMessages, { role: "assistant", content: `Error: ${msg}` }]);
     } finally {
       setIsLoading(false);
     }
@@ -722,7 +680,6 @@ function ChatTab({
 
   return (
     <div className="flex flex-col h-full gap-2">
-
       <div className="flex-1 overflow-y-auto space-y-2 pr-1">
         {messages.length === 0 ? (
           <ChatPlaceholder type={graph.type} />
@@ -753,20 +710,17 @@ function ChatTab({
       </div>
 
       <div className="flex flex-col gap-1 border-t pt-2">
-        {/* Source context toggle — sits directly above the input */}
-        {sourceLabel && (
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              className="rounded border-muted accent-primary"
-              checked={includeSource}
-              onChange={(e) => setIncludeSource(e.target.checked)}
-            />
-            <span className="text-xs text-muted-foreground">
-              Include {sourceLabel} as context
-            </span>
-          </label>
-        )}
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            className="rounded border-muted accent-primary"
+            checked={includeSource}
+            onChange={(e) => setIncludeSource(e.target.checked)}
+          />
+          <span className="text-xs text-muted-foreground">
+            Include {graph.label} as context
+          </span>
+        </label>
         <textarea
           className="w-full text-xs rounded border bg-background px-2 py-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-ring"
           rows={3}
@@ -795,13 +749,10 @@ function ChatTab({
 export function RightSidebar({
   sidebarWidth,
   isResizing,
-  onResizeStart,
   activeGraph,
   selectedNode,
   selectedReference,
-  onGraphUpdate,
-  onNodeUpdate,
-  onNodeDelete,
+  onEvent,
 }: RightSidebarProps) {
   const [activeTab, setActiveTab] = useState<"properties" | "chat">("properties");
 
@@ -813,7 +764,7 @@ export function RightSidebar({
       <div
         className={`w-1 cursor-col-resize shrink-0 hover:bg-blue-300 active:bg-blue-400 transition-colors ${isResizing ? "bg-blue-400" : "bg-transparent"
           }`}
-        onMouseDown={onResizeStart}
+        onMouseDown={() => onEvent({ type: "layout:resize-right-start" })}
         title="Drag to resize sidebar"
       />
 
@@ -848,12 +799,13 @@ export function RightSidebar({
               graph={activeGraph}
               selectedNode={selectedNode}
               selectedReference={selectedReference}
-              onGraphUpdate={onGraphUpdate}
-              onNodeUpdate={onNodeUpdate}
-              onNodeDelete={onNodeDelete}
+              onEvent={onEvent}
             />
           ) : (
-            <ChatTab graph={activeGraph!} onGraphUpdate={onGraphUpdate} />
+            <ChatTab
+              graph={activeGraph!}
+              onGraphUpdate={(graph) => onEvent({ type: "graph:update", graph })}
+            />
           )}
         </div>
       </aside>

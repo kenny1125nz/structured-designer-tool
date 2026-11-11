@@ -2,6 +2,7 @@ import { useState } from "react";
 import { NewGraphMenu } from "./NewGraphMenu";
 import { ConfigDialog } from "./ConfigDialog";
 import type { Node } from "@/model/types";
+import type { AppDispatch } from "@/app/events";
 
 // ---------------------------------------------------------------------------
 // Type badge
@@ -72,7 +73,6 @@ function NodeTreeRow({
           }`}
         style={{ paddingLeft: `${indent + 4}px` }}
       >
-        {/* Expand/collapse toggle */}
         <button
           className="w-4 shrink-0 text-center text-muted-foreground/60 text-xs hover:text-foreground"
           onClick={(e) => { e.stopPropagation(); if (hasChildren) onToggle(node.id); }}
@@ -81,7 +81,6 @@ function NodeTreeRow({
           {hasChildren ? (expanded ? "▾" : "▸") : ""}
         </button>
 
-        {/* Icon + label */}
         <button
           className="flex items-center gap-1 flex-1 min-w-0 text-left py-0.5 pr-1 text-xs"
           onClick={() => onFocus(node.id)}
@@ -92,7 +91,6 @@ function NodeTreeRow({
         </button>
       </div>
 
-      {/* Children */}
       {expanded && hasChildren && (
         <div className="border-l border-border/50 ml-3">
           {node.children!.map((child) => (
@@ -123,7 +121,7 @@ function GraphTree({
   onSelectGraph,
   onDeleteGraph,
   onExportGraph,
-  onFocusNode
+  onFocusNode,
 }: {
   graphs: Node[];
   activeGraph: Node | null;
@@ -167,9 +165,7 @@ function GraphTree({
 
         return (
           <li key={g.id}>
-            {/* Graph row */}
             <div className={`group flex items-center gap-1 rounded hover:bg-muted/50 transition-colors ${isActive ? "bg-muted/40" : ""}`}>
-              {/* Expand toggle */}
               <button
                 className="w-4 shrink-0 text-center text-muted-foreground/50 text-xs hover:text-foreground py-1"
                 onClick={() => toggleGraph(g.id)}
@@ -189,7 +185,6 @@ function GraphTree({
                 {g.label}
               </button>
 
-              {/* Export */}
               <button
                 className="shrink-0 px-1 py-0.5 rounded text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-muted transition-opacity text-xs"
                 title="Export as JSON"
@@ -197,7 +192,6 @@ function GraphTree({
               >
                 ↓
               </button>
-              {/* Delete */}
               <button
                 className="shrink-0 px-1 py-0.5 rounded text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-muted hover:text-destructive transition-opacity text-xs"
                 title="Delete graph"
@@ -207,7 +201,6 @@ function GraphTree({
               </button>
             </div>
 
-            {/* Subtree: children of this graph */}
             {graphExpanded && hasChildren && (
               <div className="ml-4 border-l border-border/40 mt-0.5">
                 {g.children!.map((child) => (
@@ -290,16 +283,8 @@ interface LeftSidebarProps {
   sidebarWidth: number;
   isResizing: boolean;
   importError: string | null;
-  onSelectGraph: (id: string) => void;
-  onDeleteGraph: (id: string) => void;
-  onExportGraph: (graph: Node) => void;
-  onImportJson: () => void;
-  onAnalyzeFromMarkdown: (type: string) => void;
-  onAnalyzeCode: () => void;
-  onAnalyzeWorkspace: () => void;
-  onResizeStart: () => void;
-  onDrillInto: (id: string) => void;
   focusedNodeId: string | null;
+  onEvent: AppDispatch;
 }
 
 export function LeftSidebar({
@@ -309,19 +294,10 @@ export function LeftSidebar({
   sidebarWidth,
   isResizing,
   importError,
-  onSelectGraph,
-  onDeleteGraph,
-  onExportGraph,
-  onImportJson,
-  onAnalyzeFromMarkdown,
-  onAnalyzeCode,
-  onAnalyzeWorkspace,
-  onResizeStart,
-  onDrillInto,
   focusedNodeId,
+  onEvent,
 }: LeftSidebarProps) {
   const [showConfig, setShowConfig] = useState(false);
-  // Default to the tab matching the active graph type (or "document" if none)
   const [activeTab, setActiveTab] = useState<string>(() => {
     if (activeGraph && TABS.some(t => t.id === activeGraph.type)) return activeGraph.type;
     return "document";
@@ -357,14 +333,14 @@ export function LeftSidebar({
             <button
               className="text-xs px-1.5 py-1 rounded border hover:bg-muted"
               title="Import graph JSON"
-              onClick={onImportJson}
+              onClick={() => onEvent({ type: "graph:import" })}
             >
               ↑
             </button>
             <NewGraphMenu
-              onAnalyzeFromMarkdown={onAnalyzeFromMarkdown}
-              onAnalyzeCode={onAnalyzeCode}
-              onAnalyzeWorkspace={onAnalyzeWorkspace}
+              onAnalyzeFromMarkdown={(type) => onEvent({ type: "analyze:markdown", graphType: type })}
+              onAnalyzeCode={() => onEvent({ type: "analyze:code" })}
+              onAnalyzeWorkspace={() => onEvent({ type: "analyze:workspace" })}
             />
           </div>
         </div>
@@ -402,10 +378,10 @@ export function LeftSidebar({
             graphs={tabGraphs}
             activeGraph={activeGraph}
             activeNodeId={focusedNodeId}
-            onSelectGraph={onSelectGraph}
-            onDeleteGraph={onDeleteGraph}
-            onExportGraph={onExportGraph}
-            onFocusNode={onDrillInto}
+            onSelectGraph={(id) => onEvent({ type: "graph:select", id })}
+            onDeleteGraph={(id) => onEvent({ type: "graph:delete", id })}
+            onExportGraph={(graph) => onEvent({ type: "graph:export", graph })}
+            onFocusNode={(id) => onEvent({ type: "node:drill", id })}
           />
         </div>
 
@@ -422,7 +398,7 @@ export function LeftSidebar({
       <div
         className={`w-1 cursor-col-resize shrink-0 hover:bg-blue-300 active:bg-blue-400 transition-colors ${isResizing ? "bg-blue-400" : "bg-transparent"
           }`}
-        onMouseDown={onResizeStart}
+        onMouseDown={() => onEvent({ type: "layout:resize-left-start" })}
         title="Drag to resize sidebar"
       />
 
